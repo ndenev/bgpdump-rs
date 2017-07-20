@@ -1,0 +1,9 @@
+[package]
+name = "bgpdump-rs"
+version = "0.1.0"
+authors = ["Nikolay Denev <nikolay@thousandeyes.com>, <ndenev@gmail.com>"]
+
+[dependencies]
+chrono = { version = "0.4", features = ["serde"] }
+nom = "3.1.0"
+memmap = "0.5.2"
