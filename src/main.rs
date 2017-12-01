@@ -3,11 +3,12 @@ extern crate nom;
 extern crate chrono;
 extern crate memmap;
 
-use memmap::{Mmap, Protection};
+use memmap::Mmap;
 use std::net::{Ipv4Addr, Ipv6Addr};
 use std::io::{self, BufReader};
 use std::io::prelude::*;
 use std::fs::File;
+use std::fmt::Write;
 use chrono::prelude::*;
 use nom::{IResult, be_u8, be_u16, be_u32, Needed, FileProducer};
 
@@ -15,13 +16,12 @@ use nom::{IResult, be_u8, be_u16, be_u32, Needed, FileProducer};
 // const BGP_DUMP: &'static str = "/Users/nikolay/Downloads/route-collector.summary.pch.net-mrt-bgp-updates-2015-10-07-23-51";
 // const BGP_DUMP: &'static str = "/Users/nikolay/rib";
 const BGP_DUMP: &'static str = "/Users/nikolay/Downloads/bview.20020722.2337";
+// const BGP_DUMP: &'static str = "/Users/nikolay/rib.20170809.0800";
 
 fn main() {
-
-    let mrt_dump_file = Mmap::open_path(BGP_DUMP, Protection::Read).expect("Unable to mmap file");
-    println!("XXX: MMAP SIZE: {}", mrt_dump_file.len());
-    let mrt_dump_bytes: &[u8] = unsafe { mrt_dump_file.as_slice() };
-    let mrt_dump = MrtDump::new(mrt_dump_bytes);
+    let file = File::open(BGP_DUMP).expect("Unable to open file");
+    let mmap = unsafe { Mmap::map(&file).expect("failed to map the file") };
+    let mrt_dump = MrtDump::new(&mmap);
     for record in mrt_dump.into_iter() {
         println!("{:?}", record);
     }
@@ -70,6 +70,8 @@ impl<'a> Iterator for MrtDumpIterator<'a> {
 
 #[derive(Debug)]
 pub enum TableDumpSubtype {
+    // TableDumpIpV4(TableDumpIpV4),
+    // TableDumpIpV6(TableDumpIpV6),
     AFI_IPv4,
     AFI_IPv6,
 }
@@ -224,6 +226,7 @@ named!(parse_record<&[u8], MrtRecord>, do_parse!(
     microsecond_timestamp: cond!(record_full_type.is_et(), be_u32) >>
     // message: take!(record_size) >>
     table: call!(parse_tabledump_ipv4) >>
+
     (MrtRecord {
         timestamp: Utc.timestamp(timestamp as i64, microsecond_timestamp.unwrap_or(0) * 1000),
         record_type: record_full_type,
@@ -242,6 +245,7 @@ struct TableDumpV4 {
     peer_ip_address: Ipv4Addr,
     peer_as: u16,
     attr_len: u16,
+    attributes: Vec<u8>,
 }
 
 named!(parse_tabledump_ipv4<&[u8], TableDumpV4>, do_parse!(
@@ -256,6 +260,13 @@ named!(parse_tabledump_ipv4<&[u8], TableDumpV4>, do_parse!(
     peer_as: be_u16 >>
     attr_len: be_u16 >>
     attributes: take!(attr_len) >>
+    // value!({
+    //     let mut s = String::new();
+    //     for c in attributes {
+    //         write!(&mut s, "{:02X} ", c).expect("failed to write");
+    //     }
+    //     println!("ATTRIBUTES: {}", s);
+    // }) >>
     (TableDumpV4{
         view_num: view_num,
         seq_num: seq_num,
@@ -265,5 +276,6 @@ named!(parse_tabledump_ipv4<&[u8], TableDumpV4>, do_parse!(
         peer_ip_address: Ipv4Addr::from(peer_ip_address),
         peer_as: peer_as,
         attr_len: attr_len,
+        attributes: attributes.into(),
     })
 ));
